@@ -1,0 +1,202 @@
+enum UserStatus {
+    INVITED
+    VERIFIED
+}
+
+model User {
+    id                String             @id @default(uuid())
+    name              String?
+    email             String?            @unique
+    pictureUrl        String?            @default('https://i.imgur.com/ZdJSK3Y.jpeg')
+    tokenInvitation   String?
+
+    stripeCustomerId  String?
+
+    status            UserStatus         @default(VERIFIED)
+
+    // this is the role of the user for the application
+    globalRole        String             @default('USER')
+    password          String?            @password @omit
+    createdAt         DateTime           @default(now())
+    updatedAt         DateTime           @updatedAt @default(now())
+
+    organizationRoles OrganizationRole[]
+
+    pwaSubscriptions  PwaSubscription[]  @relation("user")
+
+    products          Product[]          @relation("user")
+    orders            Order[]            @relation("user")
+    customOrders      CustomOrder[]      @relation("user")
+    bids              Bid[]              @relation("user")
+    donations         Donation[]         @relation("user")
+
+    @@auth()
+    @@allow("all", auth().id == this.id)
+    @@allow('all', auth().globalRole == 'ADMIN')
+
+    //we only allow that user to register if they don't create an admin role
+    @@allow("create", globalRole != 'ADMIN')
+    @@allow("read", true)
+}
+
+model Product {
+
+    id             String        @id @default(uuid())
+    name           String
+    description    String?
+    price          String
+    size           String?
+    category       String?
+    status         String
+    quantity       Float
+    pictureUrl     String?
+
+    organizationId String
+    organization   Organization? @relation(fields: [organizationId], references: [id], name: "organization")
+    userId         String
+    user           User?         @relation(fields: [userId], references: [id], name: "user")
+
+    orderItems     OrderItem[]   @relation("product")
+    createdAt      DateTime      @default(now())
+    updatedAt      DateTime      @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model Order {
+
+    id             String        @id @default(uuid())
+    status         String
+    total          String
+    type           String
+
+    organizationId String
+    organization   Organization? @relation(fields: [organizationId], references: [id], name: "organization")
+    userId         String
+    user           User?         @relation(fields: [userId], references: [id], name: "user")
+
+    orderItems     OrderItem[]   @relation("order")
+    createdAt      DateTime      @default(now())
+    updatedAt      DateTime      @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model OrderItem {
+
+    id        String   @id @default(uuid())
+    quantity  Float
+    price     String
+
+    orderId   String
+    order     Order?   @relation(fields: [orderId], references: [id], name: "order")
+    productId String
+    product   Product? @relation(fields: [productId], references: [id], name: "product")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model CustomOrder {
+
+    id             String        @id @default(uuid())
+    description    String
+    deadline       String
+    status         String
+
+    organizationId String
+    organization   Organization? @relation(fields: [organizationId], references: [id], name: "organization")
+    userId         String
+    user           User?         @relation(fields: [userId], references: [id], name: "user")
+
+    bids           Bid[]         @relation("customOrder")
+    createdAt      DateTime      @default(now())
+    updatedAt      DateTime      @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model Bid {
+
+    id            String       @id @default(uuid())
+    price         String
+    timeline      String
+    status        String
+
+    customOrderId String
+    customOrder   CustomOrder? @relation(fields: [customOrderId], references: [id], name: "customOrder")
+    userId        String
+    user          User?        @relation(fields: [userId], references: [id], name: "user")
+
+    createdAt     DateTime     @default(now())
+    updatedAt     DateTime     @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model Donation {
+
+    id             String        @id @default(uuid())
+    description    String
+    pickupTime     String
+    status         String
+    kindnessPoints Float
+
+    organizationId String
+    organization   Organization? @relation(fields: [organizationId], references: [id], name: "organization")
+    userId         String
+    user           User?         @relation(fields: [userId], references: [id], name: "user")
+
+    createdAt      DateTime      @default(now())
+    updatedAt      DateTime      @updatedAt @default(now())
+    @@allow("all", true)
+}
+
+model Organization {
+    id               String             @id @default(uuid())
+    name             String
+    pictureUrl       String?            @default('https://i.imgur.com/BgkFiid.jpeg')
+
+    stripeCustomerId String?
+
+    createdAt        DateTime           @default(now())
+    updatedAt        DateTime           @updatedAt @default(now())
+    roles            OrganizationRole[]
+
+    products         Product[]          @relation("organization")
+    orders           Order[]            @relation("organization")
+    customOrders     CustomOrder[]      @relation("organization")
+    donations        Donation[]         @relation("organization")
+
+    @@allow('all', auth().globalRole == 'ADMIN')
+    @@allow('all', roles?[user == auth() && name == 'owner'])
+    @@allow('read', roles?[user == auth()])
+}
+
+model OrganizationRole {
+    id             String       @id @default(uuid())
+    name           String
+    createdAt      DateTime     @default(now())
+    updatedAt      DateTime     @updatedAt @default(now())
+
+    userId         String       @default(auth().id)
+    user           User         @relation(fields: [userId], references: [id])
+    organizationId String
+    organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+    @@allow('all', auth().globalRole == 'ADMIN')
+    @@allow('all', organization.roles?[user == auth() && name == 'owner'])
+    @@allow('create', organization.roles?[user == auth()] && name != 'owner')
+    @@allow('read', organization.roles?[user == auth()])
+    @@allow('delete', auth() == user)
+}
+
+model PwaSubscription {
+    id        String   @id @default(uuid())
+    content   String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt @default(now())
+
+    userId    String   @default(auth().id)
+    user      User     @relation(fields: [userId], references: [id], name: 'user')
+
+    @@allow("all", true)
+}
+
